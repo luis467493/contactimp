@@ -3,6 +3,7 @@ package com.leeg.contactimp.service;
 import com.leeg.contactimp.constants.Constants;
 import com.leeg.contactimp.dto.ContactDto;
 import com.leeg.contactimp.dto.UserDto;
+import com.leeg.contactimp.exceptions.FileExceptions;
 import com.leeg.contactimp.exceptions.TokenExceptions;
 import com.leeg.contactimp.exceptions.UserExceptions;
 import com.leeg.contactimp.model.ContactModel;
@@ -21,12 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.transaction.Transactional;
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import static com.leeg.contactimp.constants.Constants.FILE_CANNOT_BE_READ;
 import static com.leeg.contactimp.constants.Constants.USER_CANNOT_MAP_FILE;
 
 @Service
@@ -50,20 +51,25 @@ public class UserService {
             throw new UserExceptions.UserNotFound(msg);
         }
 
-        return TokenUtil.codeString(UserUtil.getUserDtoFromModel(user));
+        return TokenUtil.generateToken(UserUtil.getUserDtoFromModel(user));
     }
 
     @Transactional
     public List<ContactDto> uploadCsv(MultipartFile file, String dbColumns, String token)
-            throws TokenExceptions.InvalidToken, TokenExceptions.UserNotFoundInToken, IOException,
-            UserExceptions.UserCannotMapFile {
+            throws TokenExceptions.InvalidToken, TokenExceptions.UserNotFoundInToken,
+            UserExceptions.UserCannotMapFile, FileExceptions.FileCannotBeRead {
         TokenUtil.verifyToken(token);
         UserDto userDto = TokenUtil.getUserDtoFromToken(token);
         UserModel userModel = userRepo.findByUsernameAndAndPassword(userDto.getUsername(),
                 StringUtil.codeString(userDto.getPassword()));
         List<ContactDto> contactModels = new ArrayList<>();
 
-        List<String> fileContent = FileUtil.readInputStream(file.getInputStream());
+        List<String> fileContent = null;
+        try {
+            fileContent = FileUtil.readInputStream(file.getInputStream());
+        }catch (Exception exception){
+            throw new FileExceptions.FileCannotBeRead(FILE_CANNOT_BE_READ);
+        }
 
         for (int index = 0; index < fileContent.size(); index++) {
             String row = fileContent.get(index);

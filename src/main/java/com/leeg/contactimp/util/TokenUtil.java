@@ -24,7 +24,7 @@ import static com.leeg.contactimp.constants.Constants.USER_NOT_FOUND_IN_TOKEN;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TokenUtil {
 
-    public static String codeString(UserDto userDto) {
+    public static String generateToken(UserDto userDto) {
         ObjectMapper oMapper = new ObjectMapper();
         Map<String, Object> map = oMapper.convertValue(userDto, Map.class);
         Algorithm algorithm = Algorithm.HMAC256(SECRET);
