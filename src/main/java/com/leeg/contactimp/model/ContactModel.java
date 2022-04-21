@@ -39,7 +39,7 @@ public class ContactModel {
     private String address;
 
     @Column(name = "credit_card")
-    private String credit_card;
+    private String creditCard;
 
     @Column(name = "franchise")
     private String franchise;

@@ -2,10 +2,13 @@ package com.leeg.contactimp.service;
 
 import com.leeg.contactimp.constants.Constants;
 import com.leeg.contactimp.dto.UserDto;
+import com.leeg.contactimp.exceptions.TokenExceptions;
 import com.leeg.contactimp.exceptions.UserExceptions;
 import com.leeg.contactimp.model.ContactModel;
+import com.leeg.contactimp.model.UserContactModel;
 import com.leeg.contactimp.model.UserModel;
 import com.leeg.contactimp.repository.IContactRepo;
+import com.leeg.contactimp.repository.IUserContactRepo;
 import com.leeg.contactimp.repository.IUserRepo;
 import com.leeg.contactimp.util.FileUtil;
 import com.leeg.contactimp.util.StringUtil;
@@ -15,6 +18,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.transaction.Transactional;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -27,6 +31,7 @@ public class UserService {
 
     private IUserRepo userRepo;
     private IContactRepo contactRepo;
+    private IUserContactRepo userContactRepo;
 
     public UserDto register(UserDto userDto) {
         UserModel user = UserUtil.getUserModelFromDto(userDto);
@@ -44,7 +49,13 @@ public class UserService {
         return TokenUtil.codeString(UserUtil.getUserDtoFromModel(user));
     }
 
-    public Object uploadCsv(MultipartFile file, String dbColumns) {
+    @Transactional
+    public Object uploadCsv(MultipartFile file, String dbColumns, String token) throws TokenExceptions.InvalidToken,
+            TokenExceptions.UserNotFoundInToken {
+        TokenUtil.verifyToken(token);
+        UserDto userDto = TokenUtil.getUserDtoFromToken(token);
+        UserModel userModel = userRepo.findByUsernameAndAndPassword(userDto.getUsername(),
+                StringUtil.codeString(userDto.getPassword()));
         try {
             List<String> fileContent = FileUtil.readInputStream(file.getInputStream());
 
@@ -62,7 +73,12 @@ public class UserService {
                     Method method = contactModelClass.getDeclaredMethod("set"+methodName, String.class);
                     method.invoke(contactModel, rowContent[dbColIndex]);
                 }
-                contactRepo.save(contactModel);
+                contactModel = contactRepo.save(contactModel);
+
+                UserContactModel userContactModel = UserContactModel.builder()
+                        .contactModel(contactModel).userModel(userModel).build();
+
+                userContactRepo.save(userContactModel);
             }
         } catch (IOException | NoSuchMethodException e) {
             e.printStackTrace();
