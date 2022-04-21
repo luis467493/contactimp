@@ -14,4 +14,12 @@ public class UserExceptions {
 		}
 	}
 
+	public static class UserCannotMapFile extends BaseException {
+		private static final long serialVersionUID = 1L;
+
+		public UserCannotMapFile(String msg) {
+			super(msg);
+		}
+	}
+
 }

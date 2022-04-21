@@ -16,7 +16,6 @@ public final class FileUtil {
         List<String> content = new ArrayList<>();
         Scanner sc = null;
         try {
-
             sc = new Scanner(inputStream, "UTF-8");
             while (sc.hasNextLine()) {
                 content.add(sc.nextLine());

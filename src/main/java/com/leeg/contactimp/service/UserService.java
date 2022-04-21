@@ -1,12 +1,17 @@
 package com.leeg.contactimp.service;
 
 import com.leeg.contactimp.constants.Constants;
+import com.leeg.contactimp.dto.ContactDto;
 import com.leeg.contactimp.dto.UserDto;
+import com.leeg.contactimp.exceptions.TokenExceptions;
 import com.leeg.contactimp.exceptions.UserExceptions;
 import com.leeg.contactimp.model.ContactModel;
+import com.leeg.contactimp.model.UserContactModel;
 import com.leeg.contactimp.model.UserModel;
 import com.leeg.contactimp.repository.IContactRepo;
+import com.leeg.contactimp.repository.IUserContactRepo;
 import com.leeg.contactimp.repository.IUserRepo;
+import com.leeg.contactimp.util.ContactUtil;
 import com.leeg.contactimp.util.FileUtil;
 import com.leeg.contactimp.util.StringUtil;
 import com.leeg.contactimp.util.TokenUtil;
@@ -15,11 +20,14 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.transaction.Transactional;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+
+import static com.leeg.contactimp.constants.Constants.USER_CANNOT_MAP_FILE;
 
 @Service
 @AllArgsConstructor
@@ -27,6 +35,7 @@ public class UserService {
 
     private IUserRepo userRepo;
     private IContactRepo contactRepo;
+    private IUserContactRepo userContactRepo;
 
     public UserDto register(UserDto userDto) {
         UserModel user = UserUtil.getUserModelFromDto(userDto);
@@ -44,33 +53,51 @@ public class UserService {
         return TokenUtil.codeString(UserUtil.getUserDtoFromModel(user));
     }
 
-    public Object uploadCsv(MultipartFile file, String dbColumns) {
-        try {
-            List<String> fileContent = FileUtil.readInputStream(file.getInputStream());
+    @Transactional
+    public List<ContactDto> uploadCsv(MultipartFile file, String dbColumns, String token)
+            throws TokenExceptions.InvalidToken, TokenExceptions.UserNotFoundInToken, IOException,
+            UserExceptions.UserCannotMapFile {
+        TokenUtil.verifyToken(token);
+        UserDto userDto = TokenUtil.getUserDtoFromToken(token);
+        UserModel userModel = userRepo.findByUsernameAndAndPassword(userDto.getUsername(),
+                StringUtil.codeString(userDto.getPassword()));
+        List<ContactDto> contactModels = new ArrayList<>();
 
-            for (int index = 0; index < fileContent.size(); index++) {
-                String row = fileContent.get(index);
-                String []rowContent = row.split(";");
-                String []dbColumnsContent = dbColumns.split(";");
+        List<String> fileContent = FileUtil.readInputStream(file.getInputStream());
 
-                ContactModel contactModel = new ContactModel();
+        for (int index = 0; index < fileContent.size(); index++) {
+            String row = fileContent.get(index);
+            String []rowContent = row.split(";");
+            String []dbColumnsContent = dbColumns.split(";");
 
-                for (int dbColIndex = 0; dbColIndex < dbColumnsContent.length; dbColIndex++) {
-                    Class<ContactModel> contactModelClass = ContactModel.class;
-                    String methodName = dbColumnsContent[dbColIndex];
-                    methodName = String.valueOf(methodName.charAt(0)).toUpperCase() + methodName.substring(1);
-                    Method method = contactModelClass.getDeclaredMethod("set"+methodName, String.class);
-                    method.invoke(contactModel, rowContent[dbColIndex]);
-                }
-                contactRepo.save(contactModel);
-            }
-        } catch (IOException | NoSuchMethodException e) {
-            e.printStackTrace();
-        } catch (InvocationTargetException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            ContactModel contactModel = mapFileColumns(rowContent, dbColumnsContent);
+            contactModel = contactRepo.save(contactModel);
+
+            UserContactModel userContactModel = UserContactModel.builder()
+                    .contactModel(contactModel).userModel(userModel).build();
+
+            userContactRepo.save(userContactModel);
+            contactModels.add(ContactUtil.getContactDtoFromModel(contactModel));
         }
-        return null;
+
+        return contactModels;
+    }
+
+    private ContactModel mapFileColumns(String[] rowContent, String[] dbColumnsContent)
+            throws UserExceptions.UserCannotMapFile {
+        ContactModel contactModel = new ContactModel();
+
+        try{
+            for (int dbColIndex = 0; dbColIndex < dbColumnsContent.length; dbColIndex++) {
+                Class<ContactModel> contactModelClass = ContactModel.class;
+                String methodName = dbColumnsContent[dbColIndex];
+                methodName = String.valueOf(methodName.charAt(0)).toUpperCase() + methodName.substring(1);
+                Method method = contactModelClass.getDeclaredMethod("set"+methodName, String.class);
+                method.invoke(contactModel, rowContent[dbColIndex]);
+            }
+        } catch (Exception exception){
+            throw new UserExceptions.UserCannotMapFile(USER_CANNOT_MAP_FILE);
+        }
+        return contactModel;
     }
 }
